@@ -101,4 +101,28 @@ export interface AppState {
   tools: ToolItem[];
 }
 
-export type ViewType = 'lock' | 'dashboard' | 'tools';
+export type ViewType = 'lock' | 'dashboard' | 'tools' | 'about' | 'backup';
+
+export interface UpdateMetadata {
+  versionName: string;
+  versionCode: number;
+  description: string;
+  downloadUrl: string;
+  forceUpdate: boolean;
+  updateTime?: string | null;
+}
+
+export interface DxxSystemBridge {
+  checkUpdate?: () => Promise<void>;
+  openSponsor?: () => void;
+  getVersion?: () => string;
+  getHitokoto?: () => string;
+  verify?: () => boolean;
+  getUpdateLog?: () => Promise<UpdateMetadata>;
+}
+
+declare global {
+  interface Window {
+    DxxSystem?: DxxSystemBridge;
+  }
+}

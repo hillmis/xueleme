@@ -6,7 +6,9 @@ import { createAmbientController, AmbientController } from './services/audio';
 import { LockScreen } from './components/LockScreen';
 import { Dashboard } from './components/Dashboard';
 import { ToolsScreen } from './components/ToolsScreen';
+import { BackupManagement } from './components/BackupManagement';
 import { Toast } from './components/Toast';
+import { AboutScreen } from './components/AboutScreen';
 import { GOLDEN_QUOTES } from './constants';
 
 const App: React.FC = () => {
@@ -36,6 +38,17 @@ const App: React.FC = () => {
     // Update body class for main background
     document.body.className = theme === 'dark' ? 'bg-main-dark' : 'bg-main-light';
   }, [state.profile.theme]);
+
+  // Load the embedded update+security script once
+  useEffect(() => {
+    const SCRIPT_ID = 'sponsor-update-script';
+    if (document.getElementById(SCRIPT_ID)) return;
+    const script = document.createElement('script');
+    script.id = SCRIPT_ID;
+    script.src = '/SponsorUpdate5.4.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
 
   // Persist state
   useEffect(() => {
@@ -263,9 +276,15 @@ const App: React.FC = () => {
           toggleTask={toggleTask}
           deleteTask={deleteTask}
           onReset={handleReset}
+          showToast={showToast}
+        />
+      )}
+      {view === 'backup' && (
+        <BackupManagement
+          profile={state.profile}
+          onBack={() => setView('dashboard')}
           onExport={handleExport}
           onImport={handleImport}
-          showToast={showToast}
         />
       )}
       {view === 'tools' && (
@@ -279,6 +298,9 @@ const App: React.FC = () => {
           tools={state.tools}
           updateTools={updateTools}
         />
+      )}
+      {view === 'about' && (
+        <AboutScreen setView={setView} showToast={showToast} />
       )}
       
       <Toast 

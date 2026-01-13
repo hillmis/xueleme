@@ -187,7 +187,7 @@ export const ToolsScreen: React.FC<ToolsScreenProps> = ({
                         {tool.title}
                       </h3>
                       <p className={`mt-2 ${size.desc} text-white/60 leading-snug break-words line-clamp-2`}>
-                        {tool.desc || '快速进入工具'}
+                        {tool.desc}
                       </p>
                     </div>
                     <Icon className="h-6 w-6 text-white/70" />

@@ -3,11 +3,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ViewType, AppState, Task, CheckinRecord, SupervisorReminderItem } from '../types';
 import { 
   ArrowLeft, Plus, Trash2, CheckCircle, 
-  Settings, BarChart3, ListTodo, Download, 
+  Settings, BarChart3, ListTodo, Database, 
   Upload, Trash, Sparkles, Copy, Share2, Sun, Moon,
   ShieldCheck, UserCheck, MessageSquare, Hand,
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Volume2, VolumeX, Image as ImageIcon, X,
-  TrendingUp, RefreshCw, Layers, Droplets, Ghost, Wand2, Mail, UserPlus, Bell, Send
+  TrendingUp, RefreshCw, Layers, Droplets, Ghost, Wand2, Mail, UserPlus, Bell, Send, Info
 } from 'lucide-react';
 import { generateAIReport } from '../services/gemini';
 import { createTypingSoundHandler } from '../services/audio';
@@ -23,8 +23,6 @@ interface DashboardProps {
   toggleTask: (id: string) => void;
   deleteTask: (id: string) => void;
   onReset: () => void;
-  onExport: () => void;
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   showToast: (title: string, desc?: string) => void;
 }
 
@@ -80,7 +78,7 @@ const StylePresets = ({ onSelect }: { onSelect: (blur: number, opacity: number) 
 
 export const Dashboard: React.FC<DashboardProps> = ({
   state, setView, updateProfile, updateRuntime, addTask, toggleTask, deleteTask, 
-  onReset, onExport, onImport, showToast
+  onReset, showToast
 }) => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'calendar' | 'stats' | 'settings'>('tasks');
   const [taskTitle, setTaskTitle] = useState('');
@@ -321,18 +319,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
       
       {/* UI 内容容器 */}
       <div className="relative z-10 pb-24 text-gray-900 dark:text-gray-100">
-        <header className="sticky top-0 z-50 glass border-b dark:border-white/5 border-black/5 px-4 py-4 backdrop-blur-xl">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <button onClick={() => setView('lock')} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="font-bold italic">仪表盘</h1>
-            <div className="flex gap-2">
-              <button onClick={onExport} title="导出" className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors"><Download className="w-4 h-4" /></button>
-              <label className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
-                <Upload className="w-4 h-4" />
-                <input type="file" className="hidden" accept=".json" onChange={onImport} />
-              </label>
+        <header className="sticky top-0 z-50">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-6 rounded-3xl border border-black/5 dark:border-white/10 bg-white/30 dark:bg-black/40 px-4 py-4 shadow-lg shadow-black/20 dark:shadow-black/60 backdrop-blur-2xl">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setView('lock')}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-gray-900 dark:text-white shadow-lg shadow-black/30 transition-all hover:bg-white/20 active:scale-95"
+                aria-label="返回锁屏"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-lg font-black tracking-wide text-gray-900 dark:text-white">仪表盘</h1>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">dashboard</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => setView('about')}
+                title="关于应用"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 dark:bg-white/5 text-gray-900 dark:text-white transition-all hover:bg-white/20 active:scale-95 shadow-lg shadow-black/30"
+              >
+                <Info className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setView('backup')}
+                title="备份管理"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 dark:bg-white/5 text-gray-900 dark:text-white transition-all hover:bg-white/20 active:scale-95 shadow-lg shadow-black/30"
+              >
+                <Database className="w-4 h-4" />
+                
+              </button>
             </div>
           </div>
         </header>
