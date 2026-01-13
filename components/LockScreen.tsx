@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { ViewType, AppState, Task, CheckinRecord } from '../types';
-import { CheckCircle2, LayoutDashboard, Clock, Flame, Calendar, Sparkles, Check, ChevronRight, AlertCircle, Trophy, Timer, Target, Quote, Music, Volume2, VolumeX, Headphones, RefreshCw, Briefcase, Wand2, Sliders, X as CloseIcon } from 'lucide-react';
+import { CheckCircle2,LayoutDashboard, Menu, Clock, Flame, Calendar, Sparkles, Check, ChevronRight, AlertCircle, Trophy, Timer, Target, Quote, Music, Volume2, VolumeX, Headphones, RefreshCw, Briefcase, Wand2, Sliders, X as CloseIcon } from 'lucide-react';
 import { GOLDEN_QUOTES } from '../constants';
 
 const SOUNDS = {
@@ -248,12 +248,12 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               <RefreshCw className="w-5 h-5" />
             </button>
 
-            {/* 工具箱按钮 */}
+           {/* 工具箱按钮 */}
             <button 
               onClick={() => { playSound('click'); setView('tools'); }}
               className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400`}
             >
-              <Briefcase className="w-5 h-5" />
+              <LayoutDashboard className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </button>
 
             {/* 正在播放指示器 */}
@@ -271,7 +271,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               onClick={() => { playSound('click'); setView('dashboard'); }}
               className="p-3.5 glass rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-90"
             >
-              <LayoutDashboard className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <Menu className="w-5 h-5" />
             </button>
           </div>
         </header>
@@ -304,7 +304,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 </div>
               ) : (
                 <div className="flex flex-col items-center">
-                  <span className="text-3xl font-black mb-1">{showSummary ? '确认同步' : '完成学习'}</span>
+                  <span className="text-3xl font-black mb-1">{showSummary ? '确认打卡' : '完成打卡'}</span>
                   <div className="flex items-center gap-1.5 opacity-80">
                      <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
                      <span className="text-[9px] font-black uppercase tracking-[0.2em]">
@@ -349,13 +349,13 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               </div>
               <div className="flex justify-between items-center mt-5 px-6">
                 <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                  核销时长: <span className="text-indigo-500">{(minutes / 60).toFixed(1)}h</span>
+                  时长: <span className="text-indigo-500">{(minutes / 60).toFixed(1)}h</span>
                 </p>
                 <button 
                   onClick={() => { playSound('click'); setShowSummary(false); }}
                   className="text-[10px] font-bold text-gray-400 hover:text-indigo-500 transition-colors uppercase tracking-widest"
                 >
-                  返回修改
+                  返回
                 </button>
               </div>
             </div>
