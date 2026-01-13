@@ -1,0 +1,8 @@
+{
+  "name": "学了么 - Xueleme Study App",
+  "description": "一个极简且带有他律机制的学习打卡应用，支持锁屏沉浸模式、任务管理及AI监督报告生成。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
