@@ -1,21 +1,24 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ViewType, AppState, Task, CheckinRecord } from '../types';
+import { ViewType, AppState, Task, CheckinRecord, SupervisorReminderItem } from '../types';
 import { 
   ArrowLeft, Plus, Trash2, CheckCircle, 
   Settings, BarChart3, ListTodo, Download, 
   Upload, Trash, Sparkles, Copy, Share2, Sun, Moon,
-  ShieldCheck, UserCheck, Phone, MessageSquare, Hand,
+  ShieldCheck, UserCheck, MessageSquare, Hand,
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Volume2, VolumeX, Image as ImageIcon, X,
-  TrendingUp, RefreshCw, Layers, Droplets, Ghost, Wand2
+  TrendingUp, RefreshCw, Layers, Droplets, Ghost, Wand2, Mail, UserPlus, Bell, Send
 } from 'lucide-react';
 import { generateAIReport } from '../services/gemini';
+import { createTypingSoundHandler } from '../services/audio';
+import { getPendingSupervisorReminders } from '../services/reminders';
 import * as echarts from 'echarts';
 
 interface DashboardProps {
   state: AppState;
   setView: (view: ViewType) => void;
   updateProfile: (updates: Partial<AppState['profile']>) => void;
+  updateRuntime: (updates: Partial<AppState['runtime']>) => void;
   addTask: (title: string, dueDate: string | null, desc: string) => void;
   toggleTask: (id: string) => void;
   deleteTask: (id: string) => void;
@@ -59,8 +62,8 @@ const SettingSlider = ({
 const StylePresets = ({ onSelect }: { onSelect: (blur: number, opacity: number) => void }) => (
   <div className="flex gap-2">
     {[
-      { name: '原图', blur: 0, opacity: 0.8, icon: ImageIcon },
-      { name: '磨砂', blur: 4, opacity: 0.5, icon: Wand2 },
+      { name: 'ԭͼ', blur: 0, opacity: 0.8, icon: ImageIcon },
+      { name: 'ĥɰ', blur: 4, opacity: 0.5, icon: Wand2 },
       { name: '极简', blur: 16, opacity: 0.2, icon: Ghost },
     ].map(p => (
       <button 
@@ -76,7 +79,7 @@ const StylePresets = ({ onSelect }: { onSelect: (blur: number, opacity: number) 
 );
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  state, setView, updateProfile, addTask, toggleTask, deleteTask, 
+  state, setView, updateProfile, updateRuntime, addTask, toggleTask, deleteTask, 
   onReset, onExport, onImport, showToast
 }) => {
   const [activeTab, setActiveTab] = useState<'tasks' | 'calendar' | 'stats' | 'settings'>('tasks');
@@ -84,8 +87,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [aiReport, setAiReport] = useState('');
   const [loadingAI, setLoadingAI] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
+  const [reminderNow, setReminderNow] = useState(new Date());
   
   const chartRef = useRef<HTMLDivElement>(null);
+  const typingSoundRef = useRef(createTypingSoundHandler({ volume: 0.12 }));
+
+  const handleTypingSound = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    typingSoundRef.current(event, state.profile.isSoundEnabled);
+  };
 
   const handleAddTask = () => {
     if (!taskTitle.trim()) return;
@@ -94,7 +103,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const tomorrowStr = tomorrow.toISOString().slice(0, 10);
     addTask(taskTitle, tomorrowStr, '');
     setTaskTitle('');
-    showToast('明日计划已添加', taskTitle);
+    showToast(`\u660e\u65e5\u8ba1\u5212\u5df2\u6dfb\u52a0\uff1a${taskTitle}`);
   };
 
   const handleGenerateReport = async () => {
@@ -106,14 +115,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const copyReport = () => {
     navigator.clipboard.writeText(aiReport);
-    showToast('已复制到剪贴板');
+    showToast(`\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f`);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'lock' | 'dashboard') => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      showToast('图片太大', '请选择 2MB 以内的图片');
+      showToast(`\u56fe\u7247\u592a\u5927`, `\u8bf7\u9009\u62e9 2MB \u4ee5\u5185\u7684\u56fe\u7247`);
       return;
     }
     const reader = new FileReader();
@@ -121,7 +130,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const base64 = event.target?.result as string;
       if (type === 'lock') updateProfile({ lockBackground: base64 });
       else updateProfile({ dashboardBackground: base64 });
-      showToast('背景已更新');
+      showToast(`\u80cc\u666f\u5df2\u66f4\u65b0`);
     };
     reader.readAsDataURL(file);
   };
@@ -130,8 +139,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const randomUrl = `https://picsum.photos/1600/900?random=${Date.now() + (type === 'lock' ? 1 : 2)}`;
     if (type === 'lock') updateProfile({ lockBackground: randomUrl });
     else updateProfile({ dashboardBackground: randomUrl });
-    showToast('随机背景已就绪');
+    showToast(`\u968f\u673a\u80cc\u666f\u5df2\u5c31\u7eea`);
   };
+
+  useEffect(() => {
+    const timer = setInterval(() => setReminderNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'calendar' && chartRef.current) {
@@ -216,11 +230,80 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const monthLabel = calendarDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
   const inputClass = "w-full bg-black/5 dark:bg-black/20 border border-black/5 dark:border-white/10 rounded-xl px-4 py-2 outline-none focus:border-indigo-500/50 text-gray-900 dark:text-gray-100 transition-all";
+  const reminderSettings = state.profile.supervisorReminderSettings;
+  const weekDayOptions = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const reminderTypeLabel: Record<string, string> = {
+    daily_cutoff: '每日截止',
+    missed_days: '缺卡提醒',
+    overdue_tasks: '任务逾期',
+    weekly_report: '周报'
+  };
+  const pendingReminders = useMemo(() => getPendingSupervisorReminders(state, reminderNow), [state, reminderNow]);
+
+  const addSupervisor = () => {
+    const next = [
+      ...(state.profile.supervisors || []),
+      {
+        id: `sup_${Date.now()}`,
+        name: '',
+        email: '',
+        relation: '',
+        enabled: true
+      }
+    ];
+    updateProfile({ supervisors: next });
+  };
+
+  const updateSupervisor = (id: string, updates: Partial<AppState['profile']['supervisors'][number]>) => {
+    const next = (state.profile.supervisors || []).map(s => s.id === id ? { ...s, ...updates } : s);
+    updateProfile({ supervisors: next });
+  };
+
+  const removeSupervisor = (id: string) => {
+    const next = (state.profile.supervisors || []).filter(s => s.id !== id);
+    updateProfile({ supervisors: next });
+  };
+
+  const updateReminderSettings = (updates: Partial<AppState['profile']['supervisorReminderSettings']>) => {
+    updateProfile({
+      supervisorReminderSettings: {
+        ...state.profile.supervisorReminderSettings,
+        ...updates
+      }
+    });
+  };
+
+  const markReminderSent = (reminder: SupervisorReminderItem) => {
+    const nextLog = { ...(state.runtime.supervisorReminderLog || {}) };
+    const entry = { ...(nextLog[reminder.supervisorId] || {}) };
+    if (reminder.type === 'daily_cutoff') entry.lastDailyCutoff = reminder.scheduledFor;
+    if (reminder.type === 'missed_days') entry.lastMissedDays = reminder.scheduledFor;
+    if (reminder.type === 'overdue_tasks') entry.lastOverdueTasks = reminder.scheduledFor;
+    if (reminder.type === 'weekly_report') entry.lastWeeklyReport = reminder.scheduledFor;
+    nextLog[reminder.supervisorId] = entry;
+    updateRuntime({ supervisorReminderLog: nextLog });
+  };
+
+  const openMailClient = (reminder: SupervisorReminderItem) => {
+    const url = `mailto:${encodeURIComponent(reminder.to)}?subject=${encodeURIComponent(reminder.subject)}&body=${encodeURIComponent(reminder.body)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSendReminder = (reminder: SupervisorReminderItem) => {
+    openMailClient(reminder);
+    markReminderSent(reminder);
+    showToast(`\u5df2\u6253\u5f00\u90ae\u4ef6\u53d1\u9001\u7a97\u53e3`, `${reminder.supervisorName || '\u76d1\u7763\u4eba'}\uff1a${reminder.reason}`);
+  };
+
+  const handleCopyReminder = (reminder: SupervisorReminderItem) => {
+    navigator.clipboard.writeText(`主题：${reminder.subject}\n\n${reminder.body}`);
+    showToast(`\u5df2\u590d\u5236\u63d0\u9192\u5185\u5bb9`);
+  };
 
   const { dashBgBlur = 2, dashBgOpacity = 0.3 } = state.profile;
 
   return (
-    <div className="min-h-screen relative transition-colors duration-500">
+    <div className="relative transition-colors duration-500">
       {/* 自定义背景图层 */}
       {state.profile.dashboardBackground && (
         <>
@@ -237,13 +320,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
       
       {/* UI 内容容器 */}
-      <div className="relative z-10 min-h-screen pb-24 text-gray-900 dark:text-gray-100">
+      <div className="relative z-10 pb-24 text-gray-900 dark:text-gray-100">
         <header className="sticky top-0 z-50 glass border-b dark:border-white/5 border-black/5 px-4 py-4 backdrop-blur-xl">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <button onClick={() => setView('lock')} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="font-bold italic">详情面板</h1>
+            <h1 className="font-bold italic">仪表盘</h1>
             <div className="flex gap-2">
               <button onClick={onExport} title="导出" className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors"><Download className="w-4 h-4" /></button>
               <label className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
@@ -254,7 +337,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </header>
 
-        <main className="max-w-4xl mx-auto p-4 space-y-6">
+        <main className="max-w-4xl mx-auto p-6 space-y-6">
           <div className="grid grid-cols-3 gap-3">
             <div className="glass rounded-2xl p-4 text-center">
               <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">总打卡</div>
@@ -270,7 +353,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex p-1 glass rounded-xl gap-1">
+          <div className="flex flex-wrap p-1 glass rounded-xl gap-1">
             {(['tasks', 'calendar', 'stats', 'settings'] as const).map(tab => (
               <button 
                 key={tab}
@@ -285,17 +368,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {activeTab === 'tasks' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="glass rounded-2xl p-4">
-                <div className="flex gap-2">
+                <div className="flex flex-row gap-2">
                   <input 
                     placeholder="明日有什么计划？"
                     className={`${inputClass} flex-1`}
                     value={taskTitle}
                     onChange={(e) => setTaskTitle(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                    onKeyDown={(e) => {
+                      handleTypingSound(e);
+                      if (e.key === 'Enter') handleAddTask();
+                    }}
                   />
                   <button 
                     onClick={handleAddTask}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+                    className="w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
                   >
                     <Plus className="w-4 h-4" /> 预设
                   </button>
@@ -335,12 +421,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="glass rounded-3xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">近 7 日时长趋势</h3>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">近 7 日时长趋势 (min)</h3>
                 </div>
-                <div ref={chartRef} className="w-full h-36 sm:h-44" />
+                <div ref={chartRef} className="w-full h-44" />
               </div>
 
-              <div className="glass rounded-3xl p-4 sm:p-5 space-y-4">
+              <div className="glass rounded-3xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1))} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
                   <h2 className="font-black italic text-base">{monthLabel}</h2>
@@ -385,20 +471,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="glass rounded-2xl p-6 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <section className="space-y-4">
                 <h2 className="text-sm font-bold text-gray-500 uppercase flex items-center gap-2"><Settings className="w-4 h-4" /> 基本配置</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs text-gray-500 font-medium">你的称呼</label>
-                    <input className={inputClass} value={state.profile.name} onChange={(e) => updateProfile({ name: e.target.value })} />
+                    <input
+                      className={inputClass}
+                      value={state.profile.name}
+                      onChange={(e) => updateProfile({ name: e.target.value })}
+                      onKeyDown={handleTypingSound}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-gray-500 font-medium">每日截止时间</label>
-                    <input type="time" className={inputClass} value={state.profile.cutoff} onChange={(e) => updateProfile({ cutoff: e.target.value })} />
+                    <input
+                      type="time"
+                      className={inputClass}
+                      value={state.profile.cutoff}
+                      onChange={(e) => updateProfile({ cutoff: e.target.value })}
+                      onKeyDown={handleTypingSound}
+                    />
                   </div>
                 </div>
               </section>
               <section className="space-y-4 pt-4 border-t dark:border-white/5 border-black/5">
                 <h2 className="text-sm font-bold text-gray-500 uppercase flex items-center gap-2"><Sun className="w-4 h-4" /> 视觉与音效</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs text-gray-500 font-medium">应用主题</label>
                     <div className="flex p-1 bg-black/5 dark:bg-black/20 rounded-xl gap-1">
@@ -460,7 +557,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <ImageIcon className="w-4 h-4 text-indigo-500" />
-                        <span className="text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300">详情面板</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300">仪表盘</span>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => fetchRandomBg('dashboard')} className="p-2 glass rounded-xl hover:text-indigo-500 transition-all hover:scale-110 active:scale-95" title="随机图片"><RefreshCw className="w-4 h-4" /></button>
@@ -500,12 +597,79 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {activeTab === 'stats' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                <div className="glass rounded-3xl p-6 space-y-6">
-                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400"><ShieldCheck className="w-6 h-6" /></div><div><h2 className="font-bold italic">实名监督人</h2><p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Human Supervision</p></div></div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><UserCheck className="w-3 h-3" /> 监督人姓名</label><input placeholder="谁在盯着你？" className={inputClass} value={state.profile.supervisorName} onChange={(e) => updateProfile({ supervisorName: e.target.value })} /></div>
-                    <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Phone className="w-3 h-3" /> 联系方式 (微信/手机)</label><input placeholder="打不通电话后果自负" className={inputClass} value={state.profile.supervisorContact} onChange={(e) => updateProfile({ supervisorContact: e.target.value })} /></div>
+                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400"><ShieldCheck className="w-6 h-6" /></div><div><h2 className="font-bold italic">真人监督员</h2><p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Human Supervision</p></div></div>
+                  <div className="space-y-4">
+                    {state.profile.supervisors.length === 0 ? (
+                      <div className="p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-xs text-gray-500">还未添加监督人，请填写挚友/同伴/师长的 QQ 邮箱。</div>
+                    ) : (
+                      <div className="space-y-4">
+                        {state.profile.supervisors.map((supervisor) => (
+                          <div key={supervisor.id} className="p-4 bg-black/5 dark:bg-white/5 rounded-2xl border border-black/5 dark:border-white/5 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">监督人</p>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => updateSupervisor(supervisor.id, { enabled: !supervisor.enabled })} className={`px-2 py-1 rounded-lg text-[9px] font-black ${supervisor.enabled ? 'bg-green-500/10 text-green-600' : 'bg-gray-500/10 text-gray-400'}`}>{supervisor.enabled ? '启用中' : '已暂停'}</button>
+                                <button onClick={() => removeSupervisor(supervisor.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><UserCheck className="w-3 h-3" /> 监督人姓名</label><input placeholder="谁在监督你？" className={inputClass} value={supervisor.name} onChange={(e) => updateSupervisor(supervisor.id, { name: e.target.value })} onKeyDown={handleTypingSound} /></div>
+                              <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Mail className="w-3 h-3" /> QQ邮箱</label><input placeholder="xxx@qq.com" className={inputClass} value={supervisor.email} onChange={(e) => updateSupervisor(supervisor.id, { email: e.target.value })} onKeyDown={handleTypingSound} /></div>
+                            </div>
+                            <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Hand className="w-3 h-3" /> 你们的关系</label><input placeholder="挚友 / 同伴 / 师长" className={inputClass} value={supervisor.relation} onChange={(e) => updateSupervisor(supervisor.id, { relation: e.target.value })} onKeyDown={handleTypingSound} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="p-4 bg-indigo-500/5 dark:bg-indigo-400/5 rounded-2xl border border-indigo-500/10 flex gap-3 items-start"><MessageSquare className="w-4 h-4 text-indigo-500 mt-1 shrink-0" /><p className="text-xs text-gray-500 leading-relaxed italic">设置真实的监督人将极大提升你的“他律”感。建议填写你的挚友、长辈或合作伙伴。</p></div>
+                  <button onClick={addSupervisor} className="w-full py-3 rounded-xl border border-indigo-500/30 text-indigo-600 hover:bg-indigo-500/10 font-bold transition-all flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> 添加监督人</button>
+                  <div className="p-4 bg-indigo-500/5 dark:bg-indigo-400/5 rounded-2xl border border-indigo-500/10 flex gap-3 items-start"><MessageSquare className="w-4 h-4 text-indigo-500 mt-1 shrink-0" /><p className="text-xs text-gray-500 leading-relaxed italic">监督提醒将通过 QQ 邮箱发送。请确保使用 {state.profile.supervisorSenderEmail || 'hillmis@qq.com'} 登录 QQ 邮箱发送。</p></div>
+
+                  <div className="pt-4 border-t dark:border-white/5 border-black/5 space-y-4">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"><Mail className="w-3 h-3" /> 邮件发送设置</div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">发送者姓名</label><input className={inputClass} value={state.profile.supervisorSenderName} onChange={(e) => updateProfile({ supervisorSenderName: e.target.value })} onKeyDown={handleTypingSound} /></div>
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">发送QQ邮箱</label><input className={inputClass} value={state.profile.supervisorSenderEmail} onChange={(e) => updateProfile({ supervisorSenderEmail: e.target.value })} onKeyDown={handleTypingSound} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">周报发送日</label><select className={inputClass} value={reminderSettings.weeklyReportDay} onChange={(e) => updateReminderSettings({ weeklyReportDay: Number(e.target.value) })}>{weekDayOptions.map((d, idx) => (<option key={d} value={idx}>{d}</option>))}</select></div>
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">周报时间</label><input type="time" className={inputClass} value={reminderSettings.weeklyReportTime} onChange={(e) => updateReminderSettings({ weeklyReportTime: e.target.value })} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 text-[10px] font-black text-gray-500"><span>每日截止提醒</span><input type="checkbox" checked={reminderSettings.dailyCutoffReminderEnabled} onChange={(e) => updateReminderSettings({ dailyCutoffReminderEnabled: e.target.checked })} /></label>
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 text-[10px] font-black text-gray-500"><span>任务逾期提醒</span><input type="checkbox" checked={reminderSettings.overdueTasksReminderEnabled} onChange={(e) => updateReminderSettings({ overdueTasksReminderEnabled: e.target.checked })} /></label>
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 text-[10px] font-black text-gray-500"><span>缺卡提醒</span><input type="checkbox" checked={reminderSettings.missedDaysReminderEnabled} onChange={(e) => updateReminderSettings({ missedDaysReminderEnabled: e.target.checked })} /></label>
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 text-[10px] font-black text-gray-500"><span>周报提醒</span><input type="checkbox" checked={reminderSettings.weeklyReportEnabled} onChange={(e) => updateReminderSettings({ weeklyReportEnabled: e.target.checked })} /></label>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t dark:border-white/5 border-black/5 space-y-4">
+                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"><Bell className="w-3 h-3" /> 待发送提醒</div>
+                      <span className="text-[10px] font-black text-indigo-500">待发送 {pendingReminders.length}</span>
+                    </div>
+                    {pendingReminders.length === 0 ? (
+                      <div className="p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-xs text-gray-500">当前没有需要发送的提醒。</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {pendingReminders.map(reminder => (
+                          <div key={reminder.id} className="p-4 bg-black/5 dark:bg-white/5 rounded-2xl border border-black/5 dark:border-white/5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-xs font-bold">{reminderTypeLabel[reminder.type]} 给 {reminder.supervisorName || reminder.to}</p>
+                                <p className="text-[10px] text-gray-500">{reminder.reason}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => handleCopyReminder(reminder)} className="p-2 rounded-lg hover:bg-black/10"><Copy className="w-4 h-4" /></button>
+                                <button onClick={() => handleSendReminder(reminder)} className="p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"><Send className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-500">QQ 邮箱提醒将默认打开客户端或 QQ 邮箱网页</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                </div>
                <div className="glass rounded-3xl p-6 relative overflow-hidden border-indigo-500/20">
                   <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none"><Sparkles className="w-32 h-32 text-indigo-500" /></div>

@@ -1,13 +1,9 @@
-
+﻿
 import React, { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { ViewType, AppState, Task, CheckinRecord } from '../types';
 import { CheckCircle2,LayoutDashboard, Menu, Clock, Flame, Calendar, Sparkles, Check, ChevronRight, AlertCircle, Trophy, Timer, Target, Quote, Music, Volume2, VolumeX, Headphones, RefreshCw, Briefcase, Wand2, Sliders, X as CloseIcon } from 'lucide-react';
 import { GOLDEN_QUOTES } from '../constants';
-
-const SOUNDS = {
-  success: 'https://assets.mixkit.co/sfx/preview/mixkit-success-bell-600.mp3',
-  click: 'https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3',
-};
+import { playEffect, createTypingSoundHandler } from '../services/audio';
 
 const TimeWheel = memo(({ valueInMinutes, onChange }: { valueInMinutes: number, onChange: (mins: number) => void }) => {
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -16,6 +12,8 @@ const TimeWheel = memo(({ valueInMinutes, onChange }: { valueInMinutes: number, 
   
   const hoursOptions = useMemo(() => Array.from({ length: 48 }, (_, i) => (i + 1) * 0.5), []);
   const currentHours = valueInMinutes / 60;
+  const minHours = hoursOptions[0];
+  const maxHours = hoursOptions[hoursOptions.length - 1];
 
   const handleScroll = () => {
     if (!wheelRef.current) return;
@@ -35,6 +33,18 @@ const TimeWheel = memo(({ valueInMinutes, onChange }: { valueInMinutes: number, 
     if (!wheelRef.current) return;
     const index = hoursOptions.indexOf(hours);
     wheelRef.current.scrollTo({ top: index * ITEM_HEIGHT, behavior: 'smooth' });
+  };
+
+  const handleCustomInput = () => {
+    const currentDisplay = currentHours % 1 === 0 ? String(currentHours) : currentHours.toFixed(1);
+    const raw = window.prompt('输入自定义时长（小时）', currentDisplay);
+    if (raw === null) return;
+    const inputValue = Number(raw);
+    if (!Number.isFinite(inputValue)) return;
+    const clamped = Math.min(maxHours, Math.max(minHours, inputValue));
+    const rounded = Math.round(clamped * 2) / 2;
+    onChange(rounded * 60);
+    scrollToValue(rounded);
   };
 
   return (
@@ -59,7 +69,7 @@ const TimeWheel = memo(({ valueInMinutes, onChange }: { valueInMinutes: number, 
           return (
             <div 
               key={h} 
-              onClick={() => scrollToValue(h)}
+              onClick={() => (isSelected ? handleCustomInput() : scrollToValue(h))}
               className={`h-[56px] flex items-center justify-center snap-center snap-always cursor-pointer font-black transition-all duration-300 select-none ${
                 isSelected ? 'text-2xl text-indigo-600 dark:text-indigo-400 z-20 scale-110' : 'text-sm text-gray-400 dark:text-gray-700'
               }`}
@@ -108,6 +118,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
   const [showError, setShowError] = useState(false);
   const [isRefreshingBg, setIsRefreshingBg] = useState(false);
+  const typingSoundRef = useRef(createTypingSoundHandler({ volume: 0.14 }));
 
   const dailyQuote = GOLDEN_QUOTES[activeQuoteIndex] || GOLDEN_QUOTES[0];
 
@@ -116,10 +127,23 @@ export const LockScreen: React.FC<LockScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!isAuditMode) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isAuditMode]);
+
   const playSound = (type: 'success' | 'click') => {
     if (!state.profile.isSoundEnabled) return;
-    const audio = new Audio(SOUNDS[type]);
-    audio.play().catch(e => console.warn("Audio playback failed:", e));
+    const volume = type === 'success' ? 0.35 : 0.22;
+    playEffect(type, volume).catch(e => console.warn("Audio playback failed:", e));
+  };
+
+  const handleTypingSound = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    typingSoundRef.current(event, state.profile.isSoundEnabled);
   };
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -230,12 +254,10 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         {/* 顶部 */}
         <header className="flex justify-between items-center mb-10">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-800 shadow-xl shadow-indigo-500/20 flex items-center justify-center text-white">
-              <Sparkles className="w-6 h-6" />
-            </div>
+           
             <div>
               <h1 className="text-xl font-black tracking-tight text-gray-900 dark:text-gray-100 italic leading-none">学了么</h1>
-              <p className="text-[9px] text-gray-500 uppercase tracking-[0.3em] font-black mt-1">Deep Focus</p>
+              <p className="text-[9px] text-gray-500 uppercase tracking-[0.3em] font-black mt-1">Xue Le Me</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -243,15 +265,15 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             <button 
               onClick={handleRefreshBg}
               disabled={isRefreshingBg}
-              className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400 hover:text-indigo-500 ${isRefreshingBg ? 'animate-spin' : ''}`}
+              className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400`}
             >
-              <RefreshCw className="w-5 h-5" />
+              <RefreshCw className="w-5 h-5  ${isRefreshingBg ? 'animate-spin' : ''}" />
             </button>
 
            {/* 工具箱按钮 */}
             <button 
               onClick={() => { playSound('click'); setView('tools'); }}
-              className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400`}
+              className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400  dark:hover:text-indigo-400`}
             >
               <LayoutDashboard className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </button>
@@ -269,7 +291,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
             <button 
               onClick={() => { playSound('click'); setView('dashboard'); }}
-              className="p-3.5 glass rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-90"
+             className={`p-3.5 glass rounded-2xl transition-all active:scale-90 text-gray-400  `}
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -289,22 +311,22 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               onClick={handleStartCheckin}
               disabled={hasToday}
               className={`
-                w-56 h-56 rounded-full flex flex-col items-center justify-center gap-2 transition-all duration-700 shadow-2xl active:scale-95 relative overflow-hidden touch-manipulation
+                w-40 h-40 rounded-full flex flex-col items-center justify-center gap-2 transition-all duration-700 shadow-2xl active:scale-95 relative overflow-hidden touch-manipulation
                 ${hasToday 
-                  ? 'bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-500 cursor-default' 
+                  ? 'bg-green-500/10  text-green-600 dark:text-green-500 cursor-default' 
                   : (showSummary && !isValid)
-                    ? 'bg-gray-200 dark:bg-white/5 border border-transparent text-gray-400 dark:text-gray-600'
-                    : 'bg-indigo-600 border-[8px] border-indigo-400/20 text-white shadow-indigo-500/40'}
+                    ? 'bg-gray-200 dark:bg-white/5  text-gray-400 dark:text-gray-600'
+                    : 'bg-indigo-600/30  text-white shadow-indigo-500/40'}
               `}
             >
               {hasToday ? (
                 <div className="flex flex-col items-center animate-in zoom-in-50 duration-500">
                   <CheckCircle2 className="w-16 h-16 mb-2" />
-                  <span className="font-black text-xl tracking-tight">今日已达成</span>
+                  <span className="font-black text-xl tracking-tight">今日已打卡</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center">
-                  <span className="text-3xl font-black mb-1">{showSummary ? '确认打卡' : '完成打卡'}</span>
+                  <span className="text-2xl font-black mb-1">{showSummary ? '确认打卡' : '今日打卡'}</span>
                   <div className="flex items-center gap-1.5 opacity-80">
                      <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
                      <span className="text-[9px] font-black uppercase tracking-[0.2em]">
@@ -314,13 +336,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 </div>
               )}
             </button>
-            {showError && (
-              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-2 text-red-500 font-black text-[10px] animate-in slide-in-from-top-4 duration-300 bg-red-500/10 px-5 py-2.5 rounded-full whitespace-nowrap">
-                <AlertCircle className="w-4 h-4" /> 总结是成长的关键（至少2字）
-              </div>
-            )}
+            
           </div>
-
           {showSummary && !hasToday && (
             <div className="w-full max-w-sm animate-in slide-in-from-bottom-10 fade-in duration-700">
               <div className="glass flex items-stretch rounded-[2.5rem] overflow-hidden border dark:border-white/10 border-black/5 shadow-2xl bg-white/60 dark:bg-black/50 backdrop-blur-3xl min-h-[168px]">
@@ -334,10 +351,11 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                   </div>
                   <div className="h-px w-full bg-black/5 dark:bg-white/5" />
                   <textarea
-                    placeholder="写下心得体会... *"
+                    placeholder="写下心得体会... (至少2字)"
                     autoFocus
                     value={note}
                     onChange={(e) => { setNote(e.target.value); setShowError(false); }}
+                    onKeyDown={handleTypingSound}
                     className="w-full flex-1 bg-transparent outline-none resize-none text-sm placeholder:text-gray-400 dark:placeholder:text-gray-600 leading-relaxed font-bold text-gray-900 dark:text-gray-100"
                   />
                   <div className="absolute bottom-3 right-5 flex items-center gap-2">
@@ -374,9 +392,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
       {/* 计划核销弹窗 */}
       {isAuditMode && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/70 backdrop-blur-2xl animate-in fade-in duration-300">
-          <div className="glass w-full max-w-md rounded-t-[3.5rem] sm:rounded-[3rem] p-8 pb-10 sm:p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 border-t dark:border-white/20 border-black/10">
-            <div className="w-12 h-1.5 bg-gray-400/20 rounded-full mx-auto mb-8 sm:hidden" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/70 backdrop-blur-2xl animate-in fade-in duration-300">
+          <div className="glass w-full max-w-md rounded-[3rem] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 border-t dark:border-white/20 border-black/10">
             <div className="flex items-center gap-4 mb-8">
               <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                 <Target className="w-8 h-8" strokeWidth={3} />

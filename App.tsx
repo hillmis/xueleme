@@ -1,14 +1,13 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, ViewType, Task } from './types';
+import { AppState, ViewType, Task, ToolItem } from './types';
 import { StorageService, getDefaultState } from './services/storage';
+import { createAmbientController, AmbientController } from './services/audio';
 import { LockScreen } from './components/LockScreen';
 import { Dashboard } from './components/Dashboard';
 import { ToolsScreen } from './components/ToolsScreen';
 import { Toast } from './components/Toast';
 import { GOLDEN_QUOTES } from './constants';
-
-const AMBIENT_SOUND_URL = 'https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(StorageService.load());
@@ -20,7 +19,7 @@ const App: React.FC = () => {
   // Global Audio & Quote State
   const [isAmbientPlaying, setIsAmbientPlaying] = useState(false);
   const [ambientVolume, setAmbientVolume] = useState(0.4);
-  const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ambientControllerRef = useRef<AmbientController | null>(null);
   const [activeQuoteIndex, setActiveQuoteIndex] = useState(0);
 
   // Initialize Random Quote
@@ -45,9 +44,7 @@ const App: React.FC = () => {
 
   // Sync Audio Volume
   useEffect(() => {
-    if (ambientAudioRef.current) {
-      ambientAudioRef.current.volume = ambientVolume;
-    }
+    ambientControllerRef.current?.setVolume(ambientVolume);
   }, [ambientVolume]);
 
   const showToast = useCallback((title: string, desc?: string) => {
@@ -55,32 +52,24 @@ const App: React.FC = () => {
   }, []);
 
   const toggleAmbient = useCallback(() => {
-    if (!ambientAudioRef.current) {
-      ambientAudioRef.current = new Audio(AMBIENT_SOUND_URL);
-      ambientAudioRef.current.loop = true;
-      ambientAudioRef.current.volume = ambientVolume;
-    }
-    
     if (isAmbientPlaying) {
-      ambientAudioRef.current.pause();
-    } else {
-      ambientAudioRef.current.play().catch(e => {
-        console.warn("Ambient playback failed:", e);
-      });
+      ambientControllerRef.current?.stop();
+      setIsAmbientPlaying(false);
+      return;
     }
-    setIsAmbientPlaying(!isAmbientPlaying);
-  }, [isAmbientPlaying, ambientVolume]);
 
-  const handleRefreshQuote = useCallback(() => {
-    setActiveQuoteIndex(prev => {
-      let next;
-      do {
-        next = Math.floor(Math.random() * GOLDEN_QUOTES.length);
-      } while (next === prev && GOLDEN_QUOTES.length > 1);
-      return next;
+    if (!ambientControllerRef.current) {
+      ambientControllerRef.current = createAmbientController();
+    }
+
+    ambientControllerRef.current.setVolume(ambientVolume);
+    ambientControllerRef.current.start().then((started) => {
+      if (started) setIsAmbientPlaying(true);
+    }).catch(e => {
+      console.warn("Ambient playback failed:", e);
+      setIsAmbientPlaying(false);
     });
-    showToast('激励语已更新');
-  }, [showToast]);
+  }, [isAmbientPlaying, ambientVolume]);
 
   const handleCheckin = (minutes: number, note: string, completedTaskIds: string[]) => {
     const now = new Date();
@@ -145,15 +134,22 @@ const App: React.FC = () => {
       },
       tasks: updatedTasks
     }));
-    
-    const postponedInfo = postponedCount > 0 ? `，${postponedCount} 个未完任务已顺延` : '';
-    showToast('打卡成功！', `今日已学 ${minutes} 分钟${postponedInfo}`);
+
+    const postponedInfo = postponedCount > 0 ? `${postponedCount} \u4e2a\u672a\u5b8c\u6210\u4efb\u52a1\u5df2\u987a\u5ef6` : '';
+    showToast(`\u6253\u5361\u6210\u529f\uff0c\u4eca\u65e5\u5df2\u5b66\u0020${minutes}\u0020\u5206\u949f${postponedInfo}`);
   };
 
   const updateProfile = (updates: Partial<AppState['profile']>) => {
     setState(prev => ({
       ...prev,
       profile: { ...prev.profile, ...updates }
+    }));
+  };
+
+  const updateRuntime = (updates: Partial<AppState['runtime']>) => {
+    setState(prev => ({
+      ...prev,
+      runtime: { ...prev.runtime, ...updates }
     }));
   };
 
@@ -203,7 +199,7 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm('确定要清空所有学习记录吗？此操作不可撤销。')) {
+    if (window.confirm('\u786e\u5b9a\u8981\u6e05\u7a7a\u6240\u6709\u5b66\u4e60\u8bb0\u5f55\u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002')) {
       const empty = getDefaultState();
       setState(empty);
       StorageService.clear();
@@ -238,8 +234,15 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  const updateTools = useCallback((nextTools: ToolItem[]) => {
+    setState(prev => ({
+      ...prev,
+      tools: nextTools
+    }));
+  }, []);
+
   return (
-    <div className="min-h-screen transition-colors duration-500 selection:bg-indigo-500/30">
+    <div className="transition-colors duration-500 selection:bg-indigo-500/30">
       {view === 'lock' && (
         <LockScreen 
           state={state} 
@@ -255,6 +258,7 @@ const App: React.FC = () => {
           state={state} 
           setView={setView}
           updateProfile={updateProfile}
+          updateRuntime={updateRuntime}
           addTask={addTask}
           toggleTask={toggleTask}
           deleteTask={deleteTask}
@@ -272,7 +276,8 @@ const App: React.FC = () => {
           toggleAmbient={toggleAmbient}
           ambientVolume={ambientVolume}
           setAmbientVolume={setAmbientVolume}
-          onRefreshQuote={handleRefreshQuote}
+          tools={state.tools}
+          updateTools={updateTools}
         />
       )}
       
